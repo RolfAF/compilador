@@ -1,51 +1,20 @@
-int x = 9
-
-int func[int num1;]
-[
-    int i = 0
-    int i_2;
-    float num = 1.2
-    string k;
-    k = '123*'
-    i_2 = 'asdasd'
-
-    if[i_3 -eq 'asd'][i_4 = 0] else [i_5 = 0]
-
-    if[i_2 -eq j][
-        i = 0
-    ]else if[i -eq 5.5][
-        i = 2
-    ]else[
-    i = 3
-    ]
+int func[int min , int max][
     
-    for[i = 2; i < 5; i++] [
-        num1 = 5
-    ]
-    
-    while[i -lt 5] [
-        i++
-        int var4;
-        int var5;
-        if[ [ [var6 -le 5] and [1 -eq 0] ] or [ not i ] ] [
-            int h = 0
+    int num = 0
+    for[int i = min; i -le max; i++] [
+        
+        num = [i * 5]
+        if[num -ge 25][
+            num++
+        ]else[
+            num--
         ]
+        out[num]
+        
     ]
     
-    int var6 = 4
-    int var7 = var6
-    int var8 = 5
+]
 
-    out['asdasdasd']    
-    
-    float z = [var8 / var7]
-    int y = [var8 / var7]
-    float u = [ [var8 / var7] * [var8 * 2] ]
-    string w = [var6 + var7]
-    a++
-    i = k
-    i = [var6 + var8]
-    int t = 'asd'
-    out[var6]
-    out[var6 * var8]
+int main[][
+    func[1,10]
 ]
