@@ -34,13 +34,20 @@ void add_linha();
 bool tipo_variavel();
 void print_variavel();
 void print_valor_variavel();
+void init_arquivo();
+void escreve_arquivo();
+char* tipo_print();
 int existe_variavel();
 int get_index();
 int valor_int();
 float valor_float();
+float valor_numerico();
 char* valor_string();
 bool compara_variaveis();
 bool compara_valores_variaveis();
+char* string_temp;
+int numero_erros = 0;
+void compila_codigo();
 extern char* verde;
 extern char* reset;
 extern char* azul;
@@ -60,147 +67,238 @@ extern char* vermelho;
     _Bool logic;
 }
 
-%token ABRE_COLCHETES FECHA_COLCHETES QUEBRA_LINHA SAIR TABELA
+%token ABRE_COLCHETES FECHA_COLCHETES QUEBRA_LINHA SAIR TABELA TAB
 %token ASPAS_SIMPLES ASPAS_DUPLAS PONTO_VIRGULA VIRGULA 
 %token IF ELSE FOR WHILE SWITCH OUT
 %token <id> ID
 %token <id> INT <valorint> INTVAL <id> FLOAT <valorfloat> FLOATVAL <id> STRING <valorchar> STRINGVAL
 %token <id> IGUAL IGUALIGUAL DIFERENTE MAIOR MAIORIGUAL MENOR MENORIGUAL E_LOGICO OU_LOGICO NAO_LOGICO
-%token SOMA SUBTRACAO MULTIPLICACAO DIVISAO MAISMAIS MENOSMENOS
-%type <id> tipo <logic> expl <valorfloat> expa termo
+%token <id> SOMA SUBTRACAO MULTIPLICACAO DIVISAO MAISMAIS MENOSMENOS
+%type  <id> tipo <logic> expl <valorfloat> expa
 
 %%
 
-programa: { init_tabela_simbolos();
-            init_tabela_codigo();
-            escopo = 0;
-            inicio_codigo("programa",yylineno); }
+programa: { init_tabela_simbolos();                  }
+          { init_tabela_codigo();                    }
+          { escopo = 0;                              }
+          { inicio_codigo("programa",yylineno);      }
+          { init_arquivo();                          } 
             cmd 
-          { printf("%sprograma ✓%s\n",verde, reset); 
-            fim_codigo("programa",yylineno); print_tabela(); print_tabela_codigo(); };
+          { printf("%sprograma ✓%s\n",verde, reset); } 
+          { fim_codigo("programa",yylineno);         }
+          { print_tabela();                          }
+          { print_tabela_codigo();                   }
+          { compila_codigo();                        } ;
     
-cmd:  cmd { inicio_codigo("if",yylineno);     } if            { printf("%scmd if ✓     %s\n",verde, reset); fim_codigo("if",yylineno);    }
-    | cmd { inicio_codigo("for",yylineno);    } for           { printf("%scmd for ✓    %s\n",verde, reset); fim_codigo("for",yylineno);   }
-    | cmd { inicio_codigo("while",yylineno);  } while         { printf("%scmd while ✓  %s\n",verde, reset); fim_codigo("while",yylineno); }
-    | cmd funcao                                              { printf("%scmd funcao ✓ %s\n",verde, reset); }
-    | cmd out                                                 { printf("%scmd out ✓    %s\n",verde, reset); }
-    | cmd att                                                 { printf("%satribuicao ✓ %s\n",verde, reset); }
-    | cmd decl                                                { printf("%sdeclaracao ✓ %s\n",verde, reset); }
-    | cmd QUEBRA_LINHA
-    | cmd SAIR                                                { exit(EXIT_SUCCESS); }
-    | cmd TABELA                                              { print_tabela(); print_tabela_codigo(); }
+cmd:  cmd { inicio_codigo("if",yylineno);     } if              { printf("%sif ✓     %s\n",verde, reset); fim_codigo("if",yylineno);    }
+    | cmd { inicio_codigo("for",yylineno);    } for             { printf("%sfor ✓    %s\n",verde, reset); fim_codigo("for",yylineno);   }
+    | cmd { inicio_codigo("while",yylineno);  } while           { printf("%swhile ✓  %s\n",verde, reset); fim_codigo("while",yylineno); }
+    | cmd funcao                                                { printf("%sfuncao ✓ %s\n",verde, reset);                               }
+    | cmd chamada_funcao                                        { printf("%schamada funcao ✓ %s\n",verde, reset);                       }
+    | cmd out                                                   { printf("%sout ✓    %s\n",verde, reset);                               }
+    | cmd att                                                   { printf("%satribuicao ✓ %s\n",verde, reset);                           }
+    | cmd decl                                                  { printf("%sdeclaracao ✓ %s\n",verde, reset);                           }
+    | cmd QUEBRA_LINHA                                          { escreve_arquivo("\n");                                                }
+    | cmd SAIR                                                  { exit(EXIT_SUCCESS);                                                   }
+    | cmd TABELA                                                { print_tabela(); print_tabela_codigo();                                }
     | %empty;
     
-if: IF ABRE_COLCHETES {escopo++;} expl FECHA_COLCHETES linha_opt ABRE_COLCHETES cmd FECHA_COLCHETES else {escopo--;} ;
-    
-else: ELSE linha_opt { inicio_codigo("else if",yylineno); } if { fim_codigo("else if",yylineno); }
-    | ELSE linha_opt { inicio_codigo("else",yylineno); } ABRE_COLCHETES cmd FECHA_COLCHETES { fim_codigo("else",yylineno); } 
+if: IF ABRE_COLCHETES                                           { escopo++; escreve_arquivo("if("); } 
+    expl FECHA_COLCHETES linha_opt ABRE_COLCHETES               { escreve_arquivo("){");            } 
+    cmd FECHA_COLCHETES                                         { escreve_arquivo("}");             }
+    else                                                        { escopo--;                         };
+                                                                
+else: ELSE linha_opt                                            { inicio_codigo("else if",yylineno); escreve_arquivo("else "); } 
+      if                                                        { fim_codigo("else if",yylineno);                              }
+    | ELSE linha_opt                                            { inicio_codigo("else",yylineno);                              } 
+      ABRE_COLCHETES                                            { escreve_arquivo("else{");                                    }
+      cmd FECHA_COLCHETES                                       { fim_codigo("else",yylineno); escreve_arquivo("}");           } 
+    | %empty;                                                   
+                                                                
+for: FOR ABRE_COLCHETES                      { escopo++; escreve_arquivo("for("); } 
+     decl PONTO_VIRGULA expl PONTO_VIRGULA   { escreve_arquivo(";");              }
+     for_incr FECHA_COLCHETES ABRE_COLCHETES { escreve_arquivo("){");             }
+     cmd FECHA_COLCHETES                     { escopo--; escreve_arquivo("}");    } ;
+                                                                
+for_incr: ID MAISMAIS { char linha[100] = ""; snprintf(linha, sizeof(linha),"%s++",$1); escreve_arquivo(linha); } 
+    | ID MENOSMENOS   { char linha[100] = ""; snprintf(linha, sizeof(linha),"%s--",$1); escreve_arquivo(linha); } ;
+                                                                                                                                                       
+while: WHILE ABRE_COLCHETES                                     { escopo++; escreve_arquivo("while("); } 
+       expl FECHA_COLCHETES ABRE_COLCHETES                      { escreve_arquivo("){");               }
+       cmd FECHA_COLCHETES                                      { escopo--; escreve_arquivo("}");      } ;
+
+funcao: tipo ID ABRE_COLCHETES                                                  { inicio_codigo("funcao",yylineno); escopo++; char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s(",$1,$2); escreve_arquivo(linha); } 
+        declaracao_parametros_func FECHA_COLCHETES linha_opt ABRE_COLCHETES     { escreve_arquivo("){");                                                                                                                   }
+        cmd FECHA_COLCHETES                                                     { fim_codigo("funcao",yylineno); escopo--; escreve_arquivo("}");                                                                           } ;
+        
+declaracao_parametros_func: parametros_func
     | %empty;
-    
-for: FOR ABRE_COLCHETES {escopo++;} att PONTO_VIRGULA expl PONTO_VIRGULA att FECHA_COLCHETES ABRE_COLCHETES cmd FECHA_COLCHETES {escopo--;} ;
-                                                                                                                                           
-while: WHILE ABRE_COLCHETES { escopo++;} expl FECHA_COLCHETES ABRE_COLCHETES cmd FECHA_COLCHETES {escopo--;} ;
+        
+parametros_func: parametros_func VIRGULA tipo ID                { printf("%sdeclaracao parametro ✓ %s\n",verde, reset); struct Valor valor = init_valor(valor); declara_variavel($4, $3, $3, valor, escopo, yylineno); char linha[100] = ""; snprintf(linha, sizeof(linha),", %s %s ",$3,$4); escreve_arquivo(linha); }
+    | tipo ID                                                   { printf("%sdeclaracao parametro ✓ %s\n",verde, reset); struct Valor valor = init_valor(valor); declara_variavel($2, $1, $1, valor, escopo, yylineno); char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s",$1,$2);    escreve_arquivo(linha); };
+        
+chamada_funcao: ID                                              { char linha[100] = ""; snprintf(linha, sizeof(linha),"%s(",$1); escreve_arquivo(linha); } 
+                ABRE_COLCHETES chamada_parametros               { escreve_arquivo(");");                                                                 }
+                FECHA_COLCHETES ;
 
-funcao: tipo ID ABRE_COLCHETES { inicio_codigo("funcao",yylineno); escopo++;} declaracao_parametros FECHA_COLCHETES linha_opt ABRE_COLCHETES cmd FECHA_COLCHETES { fim_codigo("funcao",yylineno); escopo--;} ;
-
-out:  OUT ABRE_COLCHETES STRINGVAL FECHA_COLCHETES       { printf("%s\n",$3); }
-    | OUT ABRE_COLCHETES ID        FECHA_COLCHETES       { if(existe_variavel($3,1)){ print_valor_variavel($3); } }
-    | OUT expa                                           { printf("%f\n",$2); };
-
-declaracao_parametros: parametros
+chamada_parametros: chamada_parametro
     | %empty;
-    
-parametros: parametros ',' decl
-    | decl              { printf("%sdeclaracao ✓ %s\n",verde, reset); };
-    
-expl: INTVAL    IGUALIGUAL INTVAL    { if( $1 == $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %i == %i %s\n",azul,$1,$3,reset); }
-    | INTVAL    DIFERENTE  INTVAL    { if( $1 != $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %i != %i %s\n",azul,$1,$3,reset); }
-    | INTVAL    MAIOR      INTVAL    { if( $1 >  $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %i >  %i %s\n",azul,$1,$3,reset); }
-    | INTVAL    MAIORIGUAL INTVAL    { if( $1 >= $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %i >= %i %s\n",azul,$1,$3,reset); }
-    | INTVAL    MENOR      INTVAL    { if( $1 <  $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %i <  %i %s\n",azul,$1,$3,reset); }
-    | INTVAL    MENORIGUAL INTVAL    { if( $1 <= $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %i <= %i %s\n",azul,$1,$3,reset); }
-    | ID        IGUALIGUAL INTVAL    { if( valor_int($1) == $3 )                        { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s == %i %s\n",azul,$1,$3,reset); }
-    | ID        DIFERENTE  INTVAL    { if( valor_int($1) != $3 )                        { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s != %i %s\n",azul,$1,$3,reset); }
-    | ID        MAIOR      INTVAL    { if( valor_int($1) >  $3 )                        { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s >  %i %s\n",azul,$1,$3,reset); }
-    | ID        MAIORIGUAL INTVAL    { if( valor_int($1) >= $3 )                        { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s >= %i %s\n",azul,$1,$3,reset); }
-    | ID        MENOR      INTVAL    { if( valor_int($1) <  $3 )                        { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s <  %i %s\n",azul,$1,$3,reset); }
-    | ID        MENORIGUAL INTVAL    { if( valor_int($1) <= $3 )                        { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s <= %i %s\n",azul,$1,$3,reset); }
-    | INTVAL    IGUALIGUAL ID        { if( $1 == valor_int($3) )                        { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %i == %s %s\n",azul,$1,$3,reset); }
-    | INTVAL    DIFERENTE  ID        { if( $1 != valor_int($3) )                        { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %i != %s %s\n",azul,$1,$3,reset); }
-    | INTVAL    MAIOR      ID        { if( $1 >  valor_int($3) )                        { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %i >  %s %s\n",azul,$1,$3,reset); }
-    | INTVAL    MAIORIGUAL ID        { if( $1 >= valor_int($3) )                        { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %i >= %s %s\n",azul,$1,$3,reset); }
-    | INTVAL    MENOR      ID        { if( $1 <  valor_int($3) )                        { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %i <  %s %s\n",azul,$1,$3,reset); }
-    | INTVAL    MENORIGUAL ID        { if( $1 <= valor_int($3) )                        { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %i <= %s %s\n",azul,$1,$3,reset); }
-    | FLOATVAL  IGUALIGUAL FLOATVAL  { if( $1 == $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %f == %f %s\n",azul,$1,$3,reset); }
-    | FLOATVAL  DIFERENTE  FLOATVAL  { if( $1 != $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %f != %f %s\n",azul,$1,$3,reset); }
-    | FLOATVAL  MAIOR      FLOATVAL  { if( $1 >  $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %f >  %f %s\n",azul,$1,$3,reset); }
-    | FLOATVAL  MAIORIGUAL FLOATVAL  { if( $1 >= $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %f >= %f %s\n",azul,$1,$3,reset); }
-    | FLOATVAL  MENOR      FLOATVAL  { if( $1 <  $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %f <  %f %s\n",azul,$1,$3,reset); }
-    | FLOATVAL  MENORIGUAL FLOATVAL  { if( $1 <= $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %f <= %f %s\n",azul,$1,$3,reset); }
-    | ID        IGUALIGUAL FLOATVAL  { if( valor_float($1) == $3 )                      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s == %f %s\n",azul,$1,$3,reset); }
-    | ID        DIFERENTE  FLOATVAL  { if( valor_float($1) != $3 )                      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s != %f %s\n",azul,$1,$3,reset); }
-    | ID        MAIOR      FLOATVAL  { if( valor_float($1) >  $3 )                      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s >  %f %s\n",azul,$1,$3,reset); }
-    | ID        MAIORIGUAL FLOATVAL  { if( valor_float($1) >= $3 )                      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s >= %f %s\n",azul,$1,$3,reset); }
-    | ID        MENOR      FLOATVAL  { if( valor_float($1) <  $3 )                      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s <  %f %s\n",azul,$1,$3,reset); }
-    | ID        MENORIGUAL FLOATVAL  { if( valor_float($1) <= $3 )                      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s <= %f %s\n",azul,$1,$3,reset); }
-    | FLOATVAL  IGUALIGUAL ID        { if( $1 == valor_float($3) )                      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %f == %s %s\n",azul,$1,$3,reset); }
-    | FLOATVAL  DIFERENTE  ID        { if( $1 != valor_float($3) )                      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %f != %s %s\n",azul,$1,$3,reset); }
-    | FLOATVAL  MAIOR      ID        { if( $1 >  valor_float($3) )                      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %f >  %s %s\n",azul,$1,$3,reset); }
-    | FLOATVAL  MAIORIGUAL ID        { if( $1 >= valor_float($3) )                      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %f >= %s %s\n",azul,$1,$3,reset); }
-    | FLOATVAL  MENOR      ID        { if( $1 <  valor_float($3) )                      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %f <  %s %s\n",azul,$1,$3,reset); }
-    | FLOATVAL  MENORIGUAL ID        { if( $1 <= valor_float($3) )                      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %f <= %s %s\n",azul,$1,$3,reset); }
-    | ID        IGUALIGUAL ID        { $$ = compara_variaveis($1,$3,"igualigual");       add_linha(get_index($1),yylineno); add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s == %s %s\n",azul,$1,$3,reset); }
-    | ID        DIFERENTE  ID        { $$ = compara_variaveis($1,$3,"diferente");        add_linha(get_index($1),yylineno); add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s != %s %s\n",azul,$1,$3,reset); }
-    | ID        MAIOR      ID        { $$ = compara_variaveis($1,$3,"maior");            add_linha(get_index($1),yylineno); add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s >  %s %s\n",azul,$1,$3,reset); }
-    | ID        MAIORIGUAL ID        { $$ = compara_variaveis($1,$3,"maiorigual");       add_linha(get_index($1),yylineno); add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s >= %s %s\n",azul,$1,$3,reset); }
-    | ID        MENOR      ID        { $$ = compara_variaveis($1,$3,"menor");            add_linha(get_index($1),yylineno); add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s <  %s %s\n",azul,$1,$3,reset); }
-    | ID        MENORIGUAL ID        { $$ = compara_variaveis($1,$3,"menorigual");       add_linha(get_index($1),yylineno); add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s <= %s %s\n",azul,$1,$3,reset); }
-    | ID        IGUALIGUAL STRINGVAL { if( !strcmp( valor_string($1) , $3 ) )           { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s == %s %s\n",azul,$1,$3,reset); }
-    | ID        DIFERENTE  STRINGVAL { if(  strcmp( valor_string($1) , $3 ) )           { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s != %s %s\n",azul,$1,$3,reset); }
-    | ID        MAIOR      STRINGVAL { if(  strcmp( valor_string($1) , $3 ) >  0 )      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s >  %s %s\n",azul,$1,$3,reset); }
-    | ID        MAIORIGUAL STRINGVAL { if(  strcmp( valor_string($1) , $3 ) >= 0 )      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s >= %s %s\n",azul,$1,$3,reset); }
-    | ID        MENOR      STRINGVAL { if(  strcmp( valor_string($1) , $3 ) <  0 )      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s <  %s %s\n",azul,$1,$3,reset); }
-    | ID        MENORIGUAL STRINGVAL { if(  strcmp( valor_string($1) , $3 ) <= 0 )      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s <= %s %s\n",azul,$1,$3,reset); }
-    | STRINGVAL IGUALIGUAL ID        { if( !strcmp( $1 , valor_string($3) ) )           { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s == %s %s\n",azul,$1,$3,reset); }
-    | STRINGVAL DIFERENTE  ID        { if(  strcmp( $1 , valor_string($3) ) )           { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s != %s %s\n",azul,$1,$3,reset); }
-    | STRINGVAL MAIOR      ID        { if(  strcmp( $1 , valor_string($3) ) >  0 )      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s >  %s %s\n",azul,$1,$3,reset); }
-    | STRINGVAL MAIORIGUAL ID        { if(  strcmp( $1 , valor_string($3) ) >= 0 )      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s >= %s %s\n",azul,$1,$3,reset); }
-    | STRINGVAL MENOR      ID        { if(  strcmp( $1 , valor_string($3) ) <  0 )      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s <  %s %s\n",azul,$1,$3,reset); }
-    | STRINGVAL MENORIGUAL ID        { if(  strcmp( $1 , valor_string($3) ) <= 0 )      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s <= %s %s\n",azul,$1,$3,reset); }
-    | STRINGVAL IGUALIGUAL STRINGVAL { if( !strcmp( $1 , $3 ) )                         { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %s == %s %s\n",azul,$1,$3,reset); }
-    | STRINGVAL DIFERENTE  STRINGVAL { if(  strcmp( $1 , $3 ) )                         { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %s != %s %s\n",azul,$1,$3,reset); }
-    | STRINGVAL MAIOR      STRINGVAL { if(  strcmp( $1 , $3 ) >  0 )                    { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %s >  %s %s\n",azul,$1,$3,reset); }
-    | STRINGVAL MAIORIGUAL STRINGVAL { if(  strcmp( $1 , $3 ) >= 0 )                    { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %s >= %s %s\n",azul,$1,$3,reset); }
-    | STRINGVAL MENOR      STRINGVAL { if(  strcmp( $1 , $3 ) <  0 )                    { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %s <  %s %s\n",azul,$1,$3,reset); }
-    | STRINGVAL MENORIGUAL STRINGVAL { if(  strcmp( $1 , $3 ) <= 0 )                    { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %s <= %s %s\n",azul,$1,$3,reset); }
-    | ABRE_COLCHETES expl FECHA_COLCHETES E_LOGICO  ABRE_COLCHETES expl FECHA_COLCHETES { $$ = ($2 && $4);                                                     printf("%sexpresao logica: e logico (&&)  %s\n",azul,reset); }
-    | ABRE_COLCHETES expl FECHA_COLCHETES OU_LOGICO ABRE_COLCHETES expl FECHA_COLCHETES { $$ = ($2 || $4);                                                     printf("%sexpresao logica: ou logico (||) %s\n",azul,reset); }
-    | NAO_LOGICO ID                                                                     { $$ = (!$2);                                                          printf("%sexpresao logica: negacao (!) %s\n",azul,reset);    };
+
+chamada_parametro: chamada_parametro VIRGULA { escreve_arquivo(", "); } chamada_termo      
+    | chamada_termo;                                             
+
+chamada_termo: ID       { char linha[100] = ""; snprintf(linha, sizeof(linha),"%s",$1); escreve_arquivo(linha); }
+    | INTVAL            { char linha[100] = ""; snprintf(linha, sizeof(linha),"%i",$1); escreve_arquivo(linha); }
+    | FLOATVAL          { char linha[100] = ""; snprintf(linha, sizeof(linha),"%f",$1); escreve_arquivo(linha); }
+    | STRINGVAL         { char linha[100] = ""; snprintf(linha, sizeof(linha),"%s",$1); escreve_arquivo(linha); } ;
+
+out:  OUT ABRE_COLCHETES STRINGVAL FECHA_COLCHETES       { printf("%s\n",$3);                                       char linha[100] = ""; snprintf(linha, sizeof(linha),"printf(\"%s\\n\");",$3); escreve_arquivo(linha);                                        }
+    | OUT ABRE_COLCHETES ID        FECHA_COLCHETES       { if(existe_variavel($3,1)){ print_valor_variavel($3); }   char linha[100] = ""; snprintf(linha, sizeof(linha),"printf(\"%s\\n\",%s",tipo_print($3),$3); escreve_arquivo(linha); escreve_arquivo(");"); }
+    | OUT expa                                           { printf("%f\n",$2);                                       escreve_arquivo("printf(\"%f\\n\",(float)"); escreve_arquivo(string_temp); escreve_arquivo(");");                                            };
+                                                                                                                                                                                                                                                            
+expl: INTVAL    IGUALIGUAL INTVAL    { if( $1 == $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %i == %i ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%i %s %i",$1,$2,$3); escreve_arquivo(linha); }             
+    | INTVAL    DIFERENTE  INTVAL    { if( $1 != $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %i != %i ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%i %s %i",$1,$2,$3); escreve_arquivo(linha); }
+    | INTVAL    MAIOR      INTVAL    { if( $1 >  $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %i >  %i ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%i %s %i",$1,$2,$3); escreve_arquivo(linha); }
+    | INTVAL    MAIORIGUAL INTVAL    { if( $1 >= $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %i >= %i ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%i %s %i",$1,$2,$3); escreve_arquivo(linha); }
+    | INTVAL    MENOR      INTVAL    { if( $1 <  $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %i <  %i ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%i %s %i",$1,$2,$3); escreve_arquivo(linha); }
+    | INTVAL    MENORIGUAL INTVAL    { if( $1 <= $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %i <= %i ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%i %s %i",$1,$2,$3); escreve_arquivo(linha); }
+    | INTVAL    IGUALIGUAL ID        { if( $1 == valor_int($3) )                        { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %i == %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%i %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | INTVAL    DIFERENTE  ID        { if( $1 != valor_int($3) )                        { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %i != %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%i %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | INTVAL    MAIOR      ID        { if( $1 >  valor_int($3) )                        { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %i >  %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%i %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | INTVAL    MAIORIGUAL ID        { if( $1 >= valor_int($3) )                        { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %i >= %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%i %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | INTVAL    MENOR      ID        { if( $1 <  valor_int($3) )                        { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %i <  %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%i %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | INTVAL    MENORIGUAL ID        { if( $1 <= valor_int($3) )                        { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %i <= %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%i %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | FLOATVAL  IGUALIGUAL FLOATVAL  { if( $1 == $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %f == %f ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%f %s %f",$1,$2,$3); escreve_arquivo(linha); }
+    | FLOATVAL  DIFERENTE  FLOATVAL  { if( $1 != $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %f != %f ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%f %s %f",$1,$2,$3); escreve_arquivo(linha); }
+    | FLOATVAL  MAIOR      FLOATVAL  { if( $1 >  $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %f >  %f ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%f %s %f",$1,$2,$3); escreve_arquivo(linha); }
+    | FLOATVAL  MAIORIGUAL FLOATVAL  { if( $1 >= $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %f >= %f ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%f %s %f",$1,$2,$3); escreve_arquivo(linha); }
+    | FLOATVAL  MENOR      FLOATVAL  { if( $1 <  $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %f <  %f ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%f %s %f",$1,$2,$3); escreve_arquivo(linha); }
+    | FLOATVAL  MENORIGUAL FLOATVAL  { if( $1 <= $3 )                                   { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %f <= %f ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%f %s %f",$1,$2,$3); escreve_arquivo(linha); }
+    | FLOATVAL  IGUALIGUAL ID        { if( $1 == valor_float($3) )                      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %f == %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%f %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | FLOATVAL  DIFERENTE  ID        { if( $1 != valor_float($3) )                      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %f != %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%f %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | FLOATVAL  MAIOR      ID        { if( $1 >  valor_float($3) )                      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %f >  %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%f %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | FLOATVAL  MAIORIGUAL ID        { if( $1 >= valor_float($3) )                      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %f >= %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%f %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | FLOATVAL  MENOR      ID        { if( $1 <  valor_float($3) )                      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %f <  %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%f %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | FLOATVAL  MENORIGUAL ID        { if( $1 <= valor_float($3) )                      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %f <= %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%f %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        IGUALIGUAL INTVAL    { if( valor_int($1) == $3 )                        { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s == %i ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %i",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        DIFERENTE  INTVAL    { if( valor_int($1) != $3 )                        { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s != %i ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %i",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        MAIOR      INTVAL    { if( valor_int($1) >  $3 )                        { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s >  %i ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %i",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        MAIORIGUAL INTVAL    { if( valor_int($1) >= $3 )                        { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s >= %i ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %i",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        MENOR      INTVAL    { if( valor_int($1) <  $3 )                        { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s <  %i ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %i",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        MENORIGUAL INTVAL    { if( valor_int($1) <= $3 )                        { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s <= %i ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %i",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        IGUALIGUAL FLOATVAL  { if( valor_float($1) == $3 )                      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s == %f ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %f",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        DIFERENTE  FLOATVAL  { if( valor_float($1) != $3 )                      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s != %f ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %f",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        MAIOR      FLOATVAL  { if( valor_float($1) >  $3 )                      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s >  %f ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %f",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        MAIORIGUAL FLOATVAL  { if( valor_float($1) >= $3 )                      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s >= %f ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %f",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        MENOR      FLOATVAL  { if( valor_float($1) <  $3 )                      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s <  %f ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %f",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        MENORIGUAL FLOATVAL  { if( valor_float($1) <= $3 )                      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s <= %f ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %f",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        IGUALIGUAL ID        { $$ = compara_variaveis($1,$3,"igualigual");       add_linha(get_index($1),yylineno); add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s == %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        DIFERENTE  ID        { $$ = compara_variaveis($1,$3,"diferente");        add_linha(get_index($1),yylineno); add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s != %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        MAIOR      ID        { $$ = compara_variaveis($1,$3,"maior");            add_linha(get_index($1),yylineno); add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s >  %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        MAIORIGUAL ID        { $$ = compara_variaveis($1,$3,"maiorigual");       add_linha(get_index($1),yylineno); add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s >= %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        MENOR      ID        { $$ = compara_variaveis($1,$3,"menor");            add_linha(get_index($1),yylineno); add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s <  %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        MENORIGUAL ID        { $$ = compara_variaveis($1,$3,"menorigual");       add_linha(get_index($1),yylineno); add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s <= %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        IGUALIGUAL STRINGVAL { if( !strcmp( valor_string($1) , $3 ) )           { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s == %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s \"%s\"",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        DIFERENTE  STRINGVAL { if(  strcmp( valor_string($1) , $3 ) )           { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s != %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s \"%s\"",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        MAIOR      STRINGVAL { if(  strcmp( valor_string($1) , $3 ) >  0 )      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s >  %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s \"%s\"",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        MAIORIGUAL STRINGVAL { if(  strcmp( valor_string($1) , $3 ) >= 0 )      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s >= %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s \"%s\"",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        MENOR      STRINGVAL { if(  strcmp( valor_string($1) , $3 ) <  0 )      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s <  %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s \"%s\"",$1,$2,$3); escreve_arquivo(linha); }
+    | ID        MENORIGUAL STRINGVAL { if(  strcmp( valor_string($1) , $3 ) <= 0 )      { $$ = true; } else { $$ = false; } add_linha(get_index($1),yylineno); printf("%sexpresao logica: %s <= %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s \"%s\"",$1,$2,$3); escreve_arquivo(linha); }
+    | STRINGVAL IGUALIGUAL ID        { if( !strcmp( $1 , valor_string($3) ) )           { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s == %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"\"%s\" %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | STRINGVAL DIFERENTE  ID        { if(  strcmp( $1 , valor_string($3) ) )           { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s != %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"\"%s\" %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | STRINGVAL MAIOR      ID        { if(  strcmp( $1 , valor_string($3) ) >  0 )      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s >  %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"\"%s\" %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | STRINGVAL MAIORIGUAL ID        { if(  strcmp( $1 , valor_string($3) ) >= 0 )      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s >= %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"\"%s\" %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | STRINGVAL MENOR      ID        { if(  strcmp( $1 , valor_string($3) ) <  0 )      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s <  %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"\"%s\" %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | STRINGVAL MENORIGUAL ID        { if(  strcmp( $1 , valor_string($3) ) <= 0 )      { $$ = true; } else { $$ = false; } add_linha(get_index($3),yylineno); printf("%sexpresao logica: %s <= %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"\"%s\" %s %s",$1,$2,$3); escreve_arquivo(linha); }
+    | STRINGVAL IGUALIGUAL STRINGVAL { if( !strcmp( $1 , $3 ) )                         { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %s == %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"\"%s\" %s \"%s\"",$1,$2,$3); escreve_arquivo(linha); }
+    | STRINGVAL DIFERENTE  STRINGVAL { if(  strcmp( $1 , $3 ) )                         { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %s != %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"\"%s\" %s \"%s\"",$1,$2,$3); escreve_arquivo(linha); }
+    | STRINGVAL MAIOR      STRINGVAL { if(  strcmp( $1 , $3 ) >  0 )                    { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %s >  %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"\"%s\" %s \"%s\"",$1,$2,$3); escreve_arquivo(linha); }
+    | STRINGVAL MAIORIGUAL STRINGVAL { if(  strcmp( $1 , $3 ) >= 0 )                    { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %s >= %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"\"%s\" %s \"%s\"",$1,$2,$3); escreve_arquivo(linha); }
+    | STRINGVAL MENOR      STRINGVAL { if(  strcmp( $1 , $3 ) <  0 )                    { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %s <  %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"\"%s\" %s \"%s\"",$1,$2,$3); escreve_arquivo(linha); }
+    | STRINGVAL MENORIGUAL STRINGVAL { if(  strcmp( $1 , $3 ) <= 0 )                    { $$ = true; } else { $$ = false; }                                    printf("%sexpresao logica: %s <= %s ✓ %s\n",azul,$1,$3,reset);     char linha[100] = ""; snprintf(linha, sizeof(linha),"\"%s\" %s \"%s\"",$1,$2,$3); escreve_arquivo(linha); }
+    | ABRE_COLCHETES expl FECHA_COLCHETES E_LOGICO  ABRE_COLCHETES expl FECHA_COLCHETES { $$ = ($2 && $4);                                                     printf("%sexpresao logica: e logico (&&) ✓%s\n",azul,reset); }
+    | ABRE_COLCHETES expl FECHA_COLCHETES OU_LOGICO ABRE_COLCHETES expl FECHA_COLCHETES { $$ = ($2 || $4);                                                     printf("%sexpresao logica: ou logico (||) ✓%s\n",azul,reset); }
+    | NAO_LOGICO ID                                     { escreve_arquivo("!");           $$ = (!$2);                                                          printf("%sexpresao logica: negacao (!) ✓%s\n",azul,reset);    };
                                                                                                                                 
-att:  ID IGUAL INTVAL           { struct Valor valor = init_valor(valor); valor.valor_int = $3;    att_variavel($1,"int",valor, yylineno);    }               
-    | ID IGUAL FLOATVAL         { struct Valor valor = init_valor(valor); valor.valor_float = $3;  att_variavel($1,"float",valor, yylineno);  }               
-    | ID IGUAL STRINGVAL        { struct Valor valor = init_valor(valor); valor.valor_string = $3; att_variavel($1,"string",valor, yylineno); }
-    | ID IGUAL ID               { att_variavel_variavel($1,$3, yylineno); }
-    | ID IGUAL expa             { att_variavel_expa($1,$3, yylineno); }
-    | ID MAISMAIS               { incrementa_variavel($1, yylineno); }
-    | ID MENOSMENOS             { decrementa_variavel($1, yylineno); }; 
+att:  ID IGUAL INTVAL           { struct Valor valor = init_valor(valor); valor.valor_int = $3;    att_variavel($1,"int",valor, yylineno);    char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %i;",$1,$2,$3); escreve_arquivo(linha);     }               
+    | ID IGUAL FLOATVAL         { struct Valor valor = init_valor(valor); valor.valor_float = $3;  att_variavel($1,"float",valor, yylineno);  char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %f;",$1,$2,$3); escreve_arquivo(linha);     }               
+    | ID IGUAL STRINGVAL        { struct Valor valor = init_valor(valor); valor.valor_string = $3; att_variavel($1,"string",valor, yylineno); char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s \"%s\";",$1,$2,$3); escreve_arquivo(linha); }
+    | ID IGUAL ID               { att_variavel_variavel($1,$3, yylineno);                                                                     char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s %s;",$1,$2,$3); escreve_arquivo(linha);     }
+    | ID IGUAL expa             { att_variavel_expa($1,$3, yylineno);                                                                         escreve_arquivo($1); escreve_arquivo(" = "); escreve_arquivo(string_temp); escreve_arquivo(";");       }
+    | ID MAISMAIS               { incrementa_variavel($1, yylineno);                                                                          char linha[100] = ""; snprintf(linha, sizeof(linha),"%s++;",$1);           escreve_arquivo(linha);     }
+    | ID MENOSMENOS             { decrementa_variavel($1, yylineno);                                                                          char linha[100] = ""; snprintf(linha, sizeof(linha),"%s--;",$1);           escreve_arquivo(linha);     };
     
-expa: ABRE_COLCHETES termo SOMA          termo FECHA_COLCHETES        { $$ = $2 + $4; }              
-    | ABRE_COLCHETES termo SUBTRACAO     termo FECHA_COLCHETES        { $$ = $2 - $4; }    
-    | ABRE_COLCHETES termo MULTIPLICACAO termo FECHA_COLCHETES        { $$ = $2 * $4; }    
-    | ABRE_COLCHETES termo DIVISAO       termo FECHA_COLCHETES        { $$ = $2 / $4; }; // precedencia de operadores desnecessaria devido ao uso obrigatorio de colchetes; 
+expa: ABRE_COLCHETES INTVAL   SOMA          INTVAL   FECHA_COLCHETES { $$ = (float)$2 + (float)$4;                   char linha[100] = ""; snprintf(linha, sizeof(linha),"( %i %s %i )",$2,$3,$4); string_temp = linha; }              
+    | ABRE_COLCHETES INTVAL   SUBTRACAO     INTVAL   FECHA_COLCHETES { $$ = (float)$2 - (float)$4;                   char linha[100] = ""; snprintf(linha, sizeof(linha),"( %i %s %i )",$2,$3,$4); string_temp = linha; }    
+    | ABRE_COLCHETES INTVAL   MULTIPLICACAO INTVAL   FECHA_COLCHETES { $$ = (float)$2 * (float)$4;                   char linha[100] = ""; snprintf(linha, sizeof(linha),"( %i %s %i )",$2,$3,$4); string_temp = linha; }    
+    | ABRE_COLCHETES INTVAL   DIVISAO       INTVAL   FECHA_COLCHETES { $$ = (float)$2 / (float)$4;                   char linha[100] = ""; snprintf(linha, sizeof(linha),"( %i %s %i )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES INTVAL   SOMA          FLOATVAL FECHA_COLCHETES { $$ = (float)$2 + $4;                          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %i %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES INTVAL   SUBTRACAO     FLOATVAL FECHA_COLCHETES { $$ = (float)$2 - $4;                          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %i %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES INTVAL   MULTIPLICACAO FLOATVAL FECHA_COLCHETES { $$ = (float)$2 * $4;                          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %i %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES INTVAL   DIVISAO       FLOATVAL FECHA_COLCHETES { $$ = (float)$2 / $4;                          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %i %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES INTVAL   SOMA          ID       FECHA_COLCHETES { $$ = (float)$2 + valor_numerico($4);          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %i %s %s )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES INTVAL   SUBTRACAO     ID       FECHA_COLCHETES { $$ = (float)$2 - valor_numerico($4);          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %i %s %s )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES INTVAL   MULTIPLICACAO ID       FECHA_COLCHETES { $$ = (float)$2 * valor_numerico($4);          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %i %s %s )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES INTVAL   DIVISAO       ID       FECHA_COLCHETES { $$ = (float)$2 / valor_numerico($4);          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %i %s %s )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES INTVAL   SOMA          expa     FECHA_COLCHETES { $$ = (float)$2 + $4;                          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %i %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES INTVAL   SUBTRACAO     expa     FECHA_COLCHETES { $$ = (float)$2 - $4;                          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %i %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES INTVAL   MULTIPLICACAO expa     FECHA_COLCHETES { $$ = (float)$2 * $4;                          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %i %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES INTVAL   DIVISAO       expa     FECHA_COLCHETES { $$ = (float)$2 / $4;                          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %i %s %f )",$2,$3,$4); string_temp = linha; }                                                                                                                     
+    | ABRE_COLCHETES FLOATVAL SOMA          INTVAL   FECHA_COLCHETES { $$ = $2 + (float)$4;                          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %i )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES FLOATVAL SUBTRACAO     INTVAL   FECHA_COLCHETES { $$ = $2 - (float)$4;                          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %i )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES FLOATVAL MULTIPLICACAO INTVAL   FECHA_COLCHETES { $$ = $2 * (float)$4;                          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %i )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES FLOATVAL DIVISAO       INTVAL   FECHA_COLCHETES { $$ = $2 / (float)$4;                          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %i )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES FLOATVAL SOMA          FLOATVAL FECHA_COLCHETES { $$ = $2 + $4;                                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES FLOATVAL SUBTRACAO     FLOATVAL FECHA_COLCHETES { $$ = $2 - $4;                                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES FLOATVAL MULTIPLICACAO FLOATVAL FECHA_COLCHETES { $$ = $2 * $4;                                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES FLOATVAL DIVISAO       FLOATVAL FECHA_COLCHETES { $$ = $2 / $4;                                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES FLOATVAL SOMA          ID       FECHA_COLCHETES { $$ = $2 + valor_numerico($4);                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %s )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES FLOATVAL SUBTRACAO     ID       FECHA_COLCHETES { $$ = $2 - valor_numerico($4);                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %s )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES FLOATVAL MULTIPLICACAO ID       FECHA_COLCHETES { $$ = $2 * valor_numerico($4);                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %s )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES FLOATVAL DIVISAO       ID       FECHA_COLCHETES { $$ = $2 / valor_numerico($4);                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %s )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES FLOATVAL SOMA          expa     FECHA_COLCHETES { $$ = $2 + $4;                                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES FLOATVAL SUBTRACAO     expa     FECHA_COLCHETES { $$ = $2 - $4;                                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES FLOATVAL MULTIPLICACAO expa     FECHA_COLCHETES { $$ = $2 * $4;                                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES FLOATVAL DIVISAO       expa     FECHA_COLCHETES { $$ = $2 / $4;                                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES ID       SOMA          INTVAL   FECHA_COLCHETES { $$ = valor_numerico($2) + (float)$4;          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %s %s %i )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES ID       SUBTRACAO     INTVAL   FECHA_COLCHETES { $$ = valor_numerico($2) - (float)$4;          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %s %s %i )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES ID       MULTIPLICACAO INTVAL   FECHA_COLCHETES { $$ = valor_numerico($2) * (float)$4;          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %s %s %i )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES ID       DIVISAO       INTVAL   FECHA_COLCHETES { $$ = valor_numerico($2) / (float)$4;          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %s %s %i )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES ID       SOMA          FLOATVAL FECHA_COLCHETES { $$ = valor_numerico($2) + $4;                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %s %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES ID       SUBTRACAO     FLOATVAL FECHA_COLCHETES { $$ = valor_numerico($2) - $4;                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %s %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES ID       MULTIPLICACAO FLOATVAL FECHA_COLCHETES { $$ = valor_numerico($2) * $4;                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %s %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES ID       DIVISAO       FLOATVAL FECHA_COLCHETES { $$ = valor_numerico($2) / $4;                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %s %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES ID       SOMA          ID       FECHA_COLCHETES { $$ = valor_numerico($2) + valor_numerico($4); char linha[100] = ""; snprintf(linha, sizeof(linha),"( %s %s %s )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES ID       SUBTRACAO     ID       FECHA_COLCHETES { $$ = valor_numerico($2) - valor_numerico($4); char linha[100] = ""; snprintf(linha, sizeof(linha),"( %s %s %s )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES ID       MULTIPLICACAO ID       FECHA_COLCHETES { $$ = valor_numerico($2) * valor_numerico($4); char linha[100] = ""; snprintf(linha, sizeof(linha),"( %s %s %s )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES ID       DIVISAO       ID       FECHA_COLCHETES { $$ = valor_numerico($2) / valor_numerico($4); char linha[100] = ""; snprintf(linha, sizeof(linha),"( %s %s %s )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES ID       SOMA          expa     FECHA_COLCHETES { $$ = valor_numerico($2) + $4;                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %s %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES ID       SUBTRACAO     expa     FECHA_COLCHETES { $$ = valor_numerico($2) - $4;                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %s %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES ID       MULTIPLICACAO expa     FECHA_COLCHETES { $$ = valor_numerico($2) * $4;                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %s %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES ID       DIVISAO       expa     FECHA_COLCHETES { $$ = valor_numerico($2) / $4;                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %s %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES expa     SOMA          INTVAL   FECHA_COLCHETES { $$ = $2 + (float)$4;                          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %i )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES expa     SUBTRACAO     INTVAL   FECHA_COLCHETES { $$ = $2 - (float)$4;                          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %i )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES expa     MULTIPLICACAO INTVAL   FECHA_COLCHETES { $$ = $2 * (float)$4;                          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %i )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES expa     DIVISAO       INTVAL   FECHA_COLCHETES { $$ = $2 / (float)$4;                          char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %i )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES expa     SOMA          FLOATVAL FECHA_COLCHETES { $$ = $2 + $4;                                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES expa     SUBTRACAO     FLOATVAL FECHA_COLCHETES { $$ = $2 - $4;                                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES expa     MULTIPLICACAO FLOATVAL FECHA_COLCHETES { $$ = $2 * $4;                                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES expa     DIVISAO       FLOATVAL FECHA_COLCHETES { $$ = $2 / $4;                                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES expa     SOMA          ID       FECHA_COLCHETES { $$ = $2 + valor_numerico($4);                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %s )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES expa     SUBTRACAO     ID       FECHA_COLCHETES { $$ = $2 - valor_numerico($4);                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %s )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES expa     MULTIPLICACAO ID       FECHA_COLCHETES { $$ = $2 * valor_numerico($4);                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %s )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES expa     DIVISAO       ID       FECHA_COLCHETES { $$ = $2 / valor_numerico($4);                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %s )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES expa     SOMA          expa     FECHA_COLCHETES { $$ = $2 + $4;                                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES expa     SUBTRACAO     expa     FECHA_COLCHETES { $$ = $2 - $4;                                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES expa     MULTIPLICACAO expa     FECHA_COLCHETES { $$ = $2 * $4;                                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %f )",$2,$3,$4); string_temp = linha; }
+    | ABRE_COLCHETES expa     DIVISAO       expa     FECHA_COLCHETES { $$ = $2 / $4;                                 char linha[100] = ""; snprintf(linha, sizeof(linha),"( %f %s %f )",$2,$3,$4); string_temp = linha; } ; 
     
-termo: expa
-    | ID            { if(!tipo_variavel($1,"string")){ $$ = (float)(tabela_simbolos[get_index($1)].valor.valor_int + tabela_simbolos[get_index($1)].valor.valor_float); } add_linha(get_index($1),yylineno); }
-    | INTVAL        { $$ = (float)$1; }
-    | FLOATVAL      { $$ = $1;        } ;
-    
-decl: tipo ID PONTO_VIRGULA     { printf("%sdeclaracao simples: %s %s %s\n",azul,$1,$2,reset); struct Valor valor = init_valor(valor);                          declara_variavel($2, $1, $1,       valor, escopo, yylineno); }
-    | tipo ID IGUAL INTVAL      { printf("%sdeclaracao: %s %s = %i %s\n",azul,$1,$2,$4,reset); struct Valor valor = init_valor(valor); valor.valor_int = $4;    declara_variavel($2, $1, "int",    valor, escopo, yylineno);   }
-    | tipo ID IGUAL FLOATVAL    { printf("%sdeclaracao: %s %s = %f %s\n",azul,$1,$2,$4,reset); struct Valor valor = init_valor(valor); valor.valor_float = $4;  declara_variavel($2, $1, "float",  valor, escopo, yylineno);   }
-    | tipo ID IGUAL STRINGVAL   { printf("%sdeclaracao: %s %s = %s %s\n",azul,$1,$2,$4,reset); struct Valor valor = init_valor(valor); valor.valor_string = $4; declara_variavel($2, $1, "string", valor, escopo, yylineno);   }
-    | tipo ID IGUAL ID          { printf("%sdeclaracao: %s %s = %s %s\n",azul,$1,$2,$4,reset); char* tipo_valor = tabela_simbolos[get_index($4)].tipo; declara_variavel($2, $1, tipo_valor, tabela_simbolos[get_index($4)].valor, escopo, yylineno); }
-    | tipo ID IGUAL expa        { printf("%sdeclaracao: %s %s = %f %s\n",azul,$1,$2,$4,reset); declara_variavel_expa($2, $1, $4, escopo, yylineno); };
+decl: tipo ID                   { printf("%sdeclaracao simples: %s %s ✓ %s\n",azul,$1,$2,reset); struct Valor valor = init_valor(valor);                          declara_variavel($2, $1, $1,       valor, escopo, yylineno-1); char linha[100] = ""; char* tipo = $1; if(!strcmp($1,"string")){tipo = "char*";} snprintf(linha, sizeof(linha),"%s %s; ",tipo,$2); escreve_arquivo(linha);         }
+    | tipo ID IGUAL INTVAL      { printf("%sdeclaracao: %s %s = %i ✓ %s\n",azul,$1,$2,$4,reset); struct Valor valor = init_valor(valor); valor.valor_int = $4;    declara_variavel($2, $1, "int",    valor, escopo, yylineno);   char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s = %i; ",$1,$2,$4); escreve_arquivo(linha); }
+    | tipo ID IGUAL FLOATVAL    { printf("%sdeclaracao: %s %s = %f ✓ %s\n",azul,$1,$2,$4,reset); struct Valor valor = init_valor(valor); valor.valor_float = $4;  declara_variavel($2, $1, "float",  valor, escopo, yylineno);   char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s = %f; ",$1,$2,$4); escreve_arquivo(linha); }
+    | tipo ID IGUAL STRINGVAL   { printf("%sdeclaracao: %s %s = %s ✓ %s\n",azul,$1,$2,$4,reset); struct Valor valor = init_valor(valor); valor.valor_string = $4; declara_variavel($2, $1, "string", valor, escopo, yylineno);   char linha[100] = ""; snprintf(linha, sizeof(linha),"char* %s = \"%s\"; ",$2,$4); escreve_arquivo(linha); }
+    | tipo ID IGUAL ID          { printf("%sdeclaracao: %s %s = %s ✓ %s\n",azul,$1,$2,$4,reset); char* tipo_valor = tabela_simbolos[get_index($4)].tipo; declara_variavel($2, $1, tipo_valor, tabela_simbolos[get_index($4)].valor, escopo, yylineno); char linha[100] = ""; snprintf(linha, sizeof(linha),"%s %s = %s; ",$1,$2,$4); escreve_arquivo(linha); }
+    | tipo ID IGUAL expa        { printf("%sdeclaracao: %s %s = %f ✓ %s\n",azul,$1,$2,$4,reset); declara_variavel_expa($2, $1, $4, escopo, yylineno); escreve_arquivo($1); escreve_arquivo(" "); escreve_arquivo($2); escreve_arquivo(" = "); escreve_arquivo(string_temp); escreve_arquivo(";"); }; // snprintf corrompe o valor da variavel string_temp...?
 
 tipo: INT       {$$ = $1;}
     | FLOAT     {$$ = $1;}
@@ -210,6 +308,28 @@ linha_opt: QUEBRA_LINHA
     | %empty;
 
 %%
+
+void init_arquivo(){
+    FILE *fp;
+    fp = fopen("test.c", "w");
+    if(fp == NULL) {
+        printf("file can't be opened\n");
+        exit(1);
+    }
+    fprintf(fp,"#include <stdio.h>\n");
+    fclose(fp);
+}
+
+void escreve_arquivo(char* cmd){
+    FILE *fp;
+    fp = fopen("test.c", "a");
+    if(fp == NULL) {
+        printf("file can't be opened\n");
+        exit(1);
+    }
+    fprintf(fp,"%s",cmd);
+    fclose(fp);
+}
 
 void add_linha(int index, int linha){
     for(int i = 0; i < 100; i++){
@@ -286,6 +406,20 @@ float valor_float(char* nome){ //retorna valor float da variavel
     return 0;
 }
 
+float valor_numerico(char* nome){ //retorna valor numerico da variavel
+    if(existe_variavel(nome,1)){
+        int i = get_index(nome);
+        add_linha(get_index(nome),yylineno);
+        if(!tipo_variavel(nome,"string")){ 
+            float num = (float)(tabela_simbolos[get_index(nome)].valor.valor_int + tabela_simbolos[get_index(nome)].valor.valor_float); 
+        }else{
+            printf("%sErro, comparacao de tipos incompativeis para variavel %s: string != int/float %s\n",vermelho,nome,reset);
+            yyerror();
+        }
+    }
+    return 0;
+}
+
 char* valor_string(char* nome){ //retorna valor string da variavel
     if(existe_variavel(nome,1)){
         int i = get_index(nome);
@@ -346,7 +480,7 @@ void declara_variavel(char* nome, char* tipo, char* tipo_valor, struct Valor val
                     tabela_simbolos[i].escopo = escopo;
                     add_linha(i,linha);
                     printf("%s",roxo);
-                    printf("add %s \n", nome);
+                    printf("add %s ✓\n", nome);
                     printf("%s",reset);
                     break; 
                 }        
@@ -370,7 +504,7 @@ void declara_variavel_expa(char* nome, char* tipo, double valor, int escopo, int
                     tabela_simbolos[i].escopo = escopo;
                     add_linha(i,linha);
                     printf("%s",roxo);
-                    printf("add %s \n", nome);
+                    printf("add %s ✓\n", nome);
                     printf("%s",reset);
                     break; 
                 }       
@@ -388,7 +522,7 @@ void att_variavel(char* nome, char* tipo, struct Valor val, int linha){
         if(!strcmp(tabela_simbolos[i].tipo, tipo)){ 
             tabela_simbolos[i].valor = val;
             add_linha(i,linha);
-            printf("%satt %s%s\n",roxo,nome,reset);
+            printf("%satt %s%s ✓\n",roxo,nome,reset);
         }else{
             printf("%sErro, atribuicao de tipos incompativeis para variavel %s: %s != %s %s\n",vermelho,nome,tabela_simbolos[i].tipo,tipo,reset);
             yyerror();
@@ -403,7 +537,7 @@ void att_variavel_expa(char* nome, double valor, int linha){
             if(tipo_variavel(nome,"int"))  { tabela_simbolos[i].valor.valor_int   = (int)valor; }
             if(tipo_variavel(nome,"float")){ tabela_simbolos[i].valor.valor_float = valor; }
             add_linha(i,linha);
-            printf("%satt %s%s\n",roxo,nome,reset);
+            printf("%satt %s%s ✓\n",roxo,nome,reset);
         }else{
             printf("%sErro, atribuicao de tipos incompativeis para variavel %s: string != int/float %s\n",vermelho,nome,reset);
             yyerror();
@@ -455,6 +589,19 @@ bool tipo_variavel(char* nome, char* tipo){
         if(!strcmp(tabela_simbolos[i].tipo,tipo)){ return true; }
     }
     return false;
+}
+
+char* tipo_print(char* nome){
+    if(tipo_variavel(nome,"int")){
+        return "%i";
+    }
+    if(tipo_variavel(nome,"float")){
+        return "%f";
+    }
+    if(tipo_variavel(nome,"string")){
+        return "%s";
+    }
+    return "";
 }
 
 void print_variavel(char* nome){
@@ -541,12 +688,23 @@ void print_tabela_codigo(){
     printf("%s",reset);
 }
 
+void compila_codigo(){
+    printf("\nnumero de erros: %i\n",numero_erros);
+    if(numero_erros == 0){
+        printf("executando codigo compilado:\n\n");
+        system("sudo gcc ./test.c -o test;");
+        system("./test");
+    }
+}
+
 int main(int argc, char **argv){
     printf("----------------------------------------------------------------------------------\n");
     printf("Iniciando...\n\n");
-    return yyparse ( );    
+    return yyparse ( );
 }
 
 void yyerror (char *s) {
     printf("Linha: %i\n%s\n",yylineno,s);
-    fprintf (stderr, "%s",s); } 
+    fprintf (stderr, "%s",s);
+    numero_erros++;
+} 
